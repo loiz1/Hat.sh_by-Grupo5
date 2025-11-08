@@ -37,7 +37,7 @@ Hat.sh es una aplicación web de código abierto para cifrado y descifrado de ar
 
 ## 2. Análisis de Vulnerabilidades con DockerScout y Herramientas FOSS
 
-### 📊 Resumen Ejecutivo del Análisis
+### Resumen Ejecutivo del Análisis
 
 **Fecha del análisis:** 3 de Noviembre, 2025
 **Versión analizada:** 2.3.6
@@ -53,7 +53,7 @@ Se identificaron **10 vulnerabilidades** distribuidas de la siguiente manera:
 | 🟡 **Media** | 5 | Rate limiting, timeouts, manejo de errores, validación MIME, SRI |
 
 
-#### ⚠️ Vulnerabilidad Crítica #1: Dependencias Desactualizadas con CVEs Conocidos
+#### Vulnerabilidad Crítica #1: Dependencias Desactualizadas con CVEs Conocidos
 
 **Ubicación:** [`package.json:1`](package.json:1)
 
@@ -72,7 +72,7 @@ Se identificaron **10 vulnerabilidades** distribuidas de la siguiente manera:
 
 ### Análisis de Código Fuente (SAST)
 
-#### ⚠️ Vulnerabilidad Crítica #2: Ausencia Completa de Headers de Seguridad HTTP
+#### Vulnerabilidad Crítica #2: Ausencia Completa de Headers de Seguridad HTTP
 
 **Ubicación:** [`next.config.js:1`](next.config.js:1), [`pages/_document.js:1`](pages/_document.js:1)
 
@@ -84,7 +84,7 @@ Se identificaron **10 vulnerabilidades** distribuidas de la siguiente manera:
 - ❌ **Referrer-Policy** - Posible fuga de información
 - ❌ **Permissions-Policy** - Sin control de permisos del navegador
 
-#### 🟠 Vulnerabilidad Alta-Media #3: Almacenamiento de Datos Sensibles en Variables Globales
+#### Vulnerabilidad Alta-Media #3: Almacenamiento de Datos Sensibles en Variables Globales
 
 **Ubicación:** [`src/components/EncryptionPanel.js:206-214`](src/components/EncryptionPanel.js:206), [`src/components/DecryptionPanel.js:196-205`](src/components/DecryptionPanel.js:196)
 
@@ -103,7 +103,7 @@ let file, files = [], password, index, currFile = 0,
 - Vulnerable a extensiones maliciosas del navegador
 - Posible fuga entre pestañas/tabs
 
-#### 🟠 Vulnerabilidad Alta-Media #4: Validación Insuficiente de Archivos de Claves
+#### Vulnerabilidad Alta-Media #4: Validación Insuficiente de Archivos de Claves
 
 **Ubicación:** [`src/components/EncryptionPanel.js:407-420`](src/components/EncryptionPanel.js:407) (loadPublicKey), [`src/components/EncryptionPanel.js:428-441`](src/components/EncryptionPanel.js:428) (loadPrivateKey)
 
@@ -113,7 +113,7 @@ Problemas identificados:
 - ❌ Sin sanitización contra contenido malicioso
 - ❌ Acepta cualquier extensión de archivo
 
-#### 🟠 Vulnerabilidad Media #5: Validación Débil de Contraseñas
+#### Vulnerabilidad Media #5: Validación Débil de Contraseñas
 
 **Ubicación:** [`src/components/EncryptionPanel.js:330-334`](src/components/EncryptionPanel.js:330)
 
@@ -128,7 +128,7 @@ La aplicación solo valida longitud mínima (12 caracteres), aceptando contrase�
 
 El proceso de hardening se organizó siguiendo un plan priorizado que abordó las vulnerabilidades desde las críticas hasta las medias.
 
-#### ⚡ ACCIÓN INMEDIATA (< 1 semana) - Vulnerabilidades Críticas
+####  ACCIÓN INMEDIATA (< 1 semana) - Vulnerabilidades Críticas
 
 **1. Actualización de Dependencias con CVEs**
 
@@ -388,7 +388,7 @@ const handleDecryption = async () => {
 - ✅ Throttling en operaciones criptográficas
 - ✅ Feedback visual del tiempo de espera
 
-#### 🎯 MEDIANO PLAZO (1-3 meses) - Vulnerabilidades Medias
+#### MEDIANO PLAZO (1-3 meses) - Vulnerabilidades Medias
 
 **7. Sanitización XSS con DOMPurify**
 
@@ -650,7 +650,7 @@ docker rm hatsh-devsecops
 ```
 
 
-### 🎓 Lecciones Aprendidas
+### Lecciones Aprendidas
 
 **Aspectos positivos del proyecto original:**
 - Uso de criptografía moderna y robusta (libsodium)
@@ -665,11 +665,11 @@ docker rm hatsh-devsecops
 - Validación estricta en puntos de entrada
 
 
-### 🏆 Conclusión Final
+### Conclusión Final
 
 El proceso de hardening de hat.sh ha sido exitoso, transformando una aplicación ya sólida en su fundamento criptográfico en una solución completamente endurecida desde la perspectiva de DevSecOps. Las **10 vulnerabilidades identificadas** han sido abordadas sistemáticamente, siguiendo un plan priorizado que comenzó con las amenazas críticas.
 
 
 #### Paso 4: Disfruta encryptando tus archivos con una version renovada! 
 
-#### by Grupo 5 🦊
+#### by Grupo 5 🦊🦅
