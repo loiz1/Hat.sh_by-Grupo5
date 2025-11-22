@@ -122,12 +122,16 @@ const DonationsModal: React.FC<{ isOpen: boolean; onClose: () => void; showToast
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center" onClick={onClose}>
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-lg" onClick={e => e.stopPropagation()}>
                 <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-xl font-semibold text-gray-900 dark:text-white">{t('donations')}</h3>
+                    <h3 className="text-xl font-semibold text-gray-900 dark:text-white">💝 {t('donations')}</h3>
                     <button onClick={onClose} className="p-2 rounded-full text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">
                         <CloseIcon />
                     </button>
                 </div>
-                <p className="text-gray-600 dark:text-gray-300 mb-4">{t('donationsSubtitle')}</p>
+                <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-gray-700 dark:to-gray-600 p-4 rounded-lg mb-4">
+                    <p className="text-gray-800 dark:text-gray-200 font-medium text-center">
+                        Cambio realizado por solicitud del Profe
+                    </p>
+                </div>
                 <div className="border-b border-gray-200 dark:border-gray-700">
                     <nav className="-mb-px flex space-x-4" aria-label="Tabs">
                         {donationsData.map(crypto => (
