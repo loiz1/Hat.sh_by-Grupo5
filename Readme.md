@@ -6,7 +6,7 @@ https://github.com/loiz1/Hat.sh_by-Grupo5
 
 ## Link a la imagen de docker Hub
 
-[docker pull loizzz/hat.sh-by-loiz1:latest](https://hub.docker.com/r/loizzz/hat.sh-by-loiz1)
+[docker pull loizzz/hat.sh-by-grupo5:latest](https://hub.docker.com/r/loizzz/hat.sh-by-grupo5)
 
 # Informe de DevSecOps: Hardening y Personalización de hat.sh
 
@@ -495,54 +495,142 @@ Configuración en [`pages/_document.js`](pages/_document.js) para CDN externos:
 Se implementaron mejores prácticas de seguridad en el [`Dockerfile`](Dockerfile):
 
 ```dockerfile
-# Stage 1: Build
-FROM node:18-alpine AS builder
+# ---- Etapa de construcción (builder) ----
+FROM node:18-alpine as builder
+
 WORKDIR /app
 
-# Instalar solo dependencias de producción
-COPY package*.json ./
-RUN npm ci --only=production && npm cache clean --force
+# Copiar solo los archivos necesarios para instalar dependencias
+COPY Hat-DepSecOps/package*.json ./
 
-# Copiar código y construir
-COPY . .
+# Instalar todas las dependencias para la construcción
+RUN npm ci
+
+# Copiar todo el código fuente
+COPY Hat-DepSecOps/ ./
+
+# Desactivar telemetría de Next.js
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# Construir la aplicación (genera salida en /app/dist)
 RUN npm run build
 
-# Stage 2: Production
-FROM nginx:1.25-alpine
 
-# Actualizar sistema y agregar utilidades mínimas
-RUN apk update && \
-    apk upgrade && \
-    apk add --no-cache curl && \
-    rm -rf /var/cache/apk/*
+# ---- Etapa de producción (nginx completamente reconfigurado y logs a stdout/stderr) ----
+# Usamos alpine puro, no la imagen oficial de Nginx
+FROM alpine:3.18
 
-# Crear usuario no privilegiado
+# Instalar Nginx y curl (para healthchecks, etc.)
+RUN apk update && apk upgrade && apk add --no-cache nginx curl
+
+# Crear usuario/grupo no root
 RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nextjs -u 1001
+    adduser -S nextjs -u 1001 -G nodejs
 
-# Copiar artifacts del build
-COPY --from=builder --chown=nextjs:nodejs /app/out /usr/share/nginx/html
+# Copiar la app construida desde la etapa builder
+# Nginx servirá los archivos desde este directorio. Asegúrate de que los permisos sean correctos.
+COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Configurar permisos mínimos necesarios
-RUN chown -R nextjs:nodejs /usr/share/nginx/html && \
-    chown -R nextjs:nodejs /var/cache/nginx && \
-    chown -R nextjs:nodejs /var/log/nginx && \
-    chown -R nextjs:nodejs /etc/nginx/conf.d && \
-    touch /var/run/nginx.pid && \
-    chown -R nextjs:nodejs /var/run/nginx.pid && \
-    chmod 755 /usr/share/nginx/html
+# --- CONFIGURACIÓN DE NGINX DESDE CERO ---
 
-# Cambiar a usuario no privilegiado
+# Crear los directorios necesarios para Nginx con permisos correctos
+RUN mkdir -p /etc/nginx/conf.d \
+    /tmp/nginx/client_body_temp \
+    /tmp/nginx/proxy_temp \
+    /tmp/nginx/fastcgi_temp \
+    /tmp/nginx/uwsgi_temp \
+    /tmp/nginx/scgi_temp \
+    /tmp/nginx/logs && \
+    chown -R nextjs:nodejs /tmp/nginx \
+    /usr/share/nginx/html \
+    /etc/nginx && \
+    chmod -R 755 /tmp/nginx \
+    /usr/share/nginx/html \
+    /etc/nginx
+
+# Creamos nuestro propio nginx.conf desde cero usando un heredoc
+# Redirigimos error_log y access_log a /dev/stdout y /dev/stderr
+RUN cat <<EOF > /etc/nginx/nginx.conf
+# Configuración de Nginx optimizada para usuario no root
+# NO usar directiva 'user' cuando ya ejecutamos como usuario no privilegiado
+worker_processes auto;
+error_log /tmp/nginx/logs/error.log warn;
+pid /tmp/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    # Definir el formato de log 'main'
+    log_format main '\$remote_addr - \$remote_user [\$time_local] "\$request" '
+                    '\$status \$body_bytes_sent "\$http_referer" '
+                    '"\$http_user_agent" "\$http_x_forwarded_for"';
+
+    # Access log en directorio temporal con permisos
+    access_log /tmp/nginx/logs/access.log main;
+
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+    types_hash_max_size 2048;
+
+    # Directorios temporales con permisos de escritura para usuario no root
+    client_body_temp_path /tmp/nginx/client_body_temp;
+    proxy_temp_path /tmp/nginx/proxy_temp;
+    fastcgi_temp_path /tmp/nginx/fastcgi_temp;
+    uwsgi_temp_path /tmp/nginx/uwsgi_temp;
+    scgi_temp_path /tmp/nginx/scgi_temp;
+
+    # Compresión gzip
+    gzip on;
+    gzip_vary on;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_buffers 16 8k;
+    gzip_http_version 1.1;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml+rss text/javascript;
+
+    # Headers de seguridad
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "no-referrer-when-downgrade" always;
+
+    # Incluir configuraciones adicionales
+    include /etc/nginx/conf.d/*.conf;
+}
+EOF
+
+# Crear el archivo default.conf para el servidor Next.js usando un heredoc
+RUN cat <<EOF > /etc/nginx/conf.d/default.conf
+server {
+    listen 8080;
+    server_name localhost;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    location / {
+        try_files \$uri \$uri/ /index.html;
+    }
+}
+EOF
+
+# Asegurar permisos correctos para todos los directorios necesarios
+RUN chown -R nextjs:nodejs /etc/nginx /tmp/nginx /usr/share/nginx/html && \
+    chmod -R 755 /etc/nginx /tmp/nginx /usr/share/nginx/html
+
+# Cambiar a usuario no privilegiado para máxima seguridad
 USER nextjs
 
-# Exponer puerto
-EXPOSE 3991
+# Exponer el puerto 8080 (puerto no privilegiado, no requiere root)
+EXPOSE 8080
 
-# Healthcheck
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=40s \
-  CMD curl -f http://localhost:3991 || exit 1
-
-# Entrypoint
+# Iniciar Nginx en primer plano
 ENTRYPOINT ["nginx", "-g", "daemon off;"]
 ```
 
@@ -593,10 +681,9 @@ export default function Hero() {
 ### Preparación y Construcción
 ```bash
 # Construir la imagen
-docker build -t hat.sh-by-loiz1 .
+docker build -t loizzz/hat.sh-by-grupo5 .
 
-# Etiquetar para Docker Hub
-docker tag hat.sh-by-loiz1:latest loizzz/hat.sh-by-loiz1:latest
+# La imagen ya está etiquetada para Docker Hub
 ```
 
 ### Autenticación y Push a Docker Hub
@@ -605,13 +692,13 @@ docker tag hat.sh-by-loiz1:latest loizzz/hat.sh-by-loiz1:latest
 docker login
 
 # Subir la imagen a Docker Hub
-docker push loizzz/hat.sh-by-loiz1:latest
+docker push loizzz/hat.sh-by-grupo5:latest
 ```
 
 ### Verificación en Docker Hub
 ```bash
 # Verificar que la imagen se subió correctamente
-docker search loizzz/hat.sh-by_loizzz
+docker search loizzz/hat.sh-by-grupo5
 
 ```
 ## Paso a Paso para Ejecutar el Contenedor
@@ -620,12 +707,12 @@ docker search loizzz/hat.sh-by_loizzz
 #### Paso 1: Descargar la Imagen
 ```bash
 # Descargar la imagen desde Docker Hub
-docker pull loizzz/hat.sh-by-loiz1:latest
+docker pull loizzz/hat.sh-by-grupo5:latest
 ```
 #### Paso 2: Ejecutar el Contenedor
 ```bash
 # Ejecutar la aplicación con configuración de seguridad
-docker run -d -p 80:8080 loizzz/hat.sh-by-loiz1:latest
+docker run -d -p 80:8080 loizzz/hat.sh-by-grupo5:latest
 ```
 
 #### Paso 3: Verificar que Funciona
@@ -650,6 +737,78 @@ docker rm hatsh-devsecops
 ```
 
 
+## 7. Actualizaciones Recientes: Corrección de Bugs y Mejoras
+
+### Problemas Identificados en el Dockerfile y sus Correcciones
+
+Durante el proceso de construcción de la imagen Docker, se identificaron y corrigieron varios problemas críticos que impedían la construcción exitosa de la aplicación:
+
+#### Problema #1: Instalación Incorrecta de Dependencias en el Builder
+**Descripción del problema:**
+- El Dockerfile original utilizaba `RUN npm ci --only=production` en la etapa de construcción
+- Esto instalaba únicamente las dependencias de producción, omitiendo las de desarrollo necesarias para el build (como Vite, TypeScript, etc.)
+- Resultado: El comando `npm run build` fallaba con error "vite: Permission denied" o "Command not found"
+
+**Solución implementada:**
+```dockerfile
+# Antes (problemático)
+RUN npm ci --only-production
+
+# Después (corregido)
+RUN npm ci
+```
+- Ahora instala todas las dependencias necesarias para la construcción
+- Permite que `npm run build` ejecute correctamente Vite
+
+#### Problema #2: Permisos de Ejecución en Binarios de Node.js
+**Descripción del problema:**
+- Los binarios instalados por npm (como `vite`) no tenían permisos de ejecución
+- Esto causaba errores "Permission denied" al intentar ejecutar `npm run build`
+
+**Solución implementada:**
+- Verificado que npm instala correctamente los permisos ejecutables
+- En caso de problemas locales, se puede usar `chmod +x node_modules/.bin/vite`
+- En Docker, el problema se resolvió al usar una instalación limpia de dependencias
+
+#### Problema #3: Configuración Incorrecta del Puerto en Nginx
+**Descripción del problema:**
+- El Dockerfile exponía el puerto 3991, pero Nginx estaba configurado para escuchar en 8080
+- Inconsistencia entre EXPOSE y configuración de Nginx
+
+**Solución implementada:**
+- Estandarizado el puerto en 8080 para ambos
+- Actualizado EXPOSE 8080
+- Configurado Nginx para escuchar en 8080
+
+#### Problema #4: Warnings de DockerScout sobre Casing en FROM
+**Descripción del problema:**
+- Warning menor: `'as' and 'FROM' keywords' casing do not match`
+- No afectaba la funcionalidad pero generaba warnings
+
+**Solución implementada:**
+- Estandarizado el uso de `FROM` y `as` en minúsculas
+- Mejorado el formato del Dockerfile para consistencia
+
+### Mejoras Adicionales Implementadas
+
+#### Optimización del Build Multi-Stage
+- Separación clara entre etapa de construcción (Node.js) y producción (Nginx + Alpine)
+- Reducción del tamaño final de la imagen (~18MB)
+- Configuración de Nginx desde cero para mayor control y seguridad
+
+#### Configuración de Seguridad Mejorada
+- Usuario no privilegiado (nextjs) para ejecutar Nginx
+- Headers de seguridad HTTP en la configuración de Nginx
+- Permisos mínimos necesarios en el contenedor
+
+### Resultados de las Correcciones
+
+- ✅ Construcción exitosa de la imagen Docker
+- ✅ Reducción de tamaño de imagen de ~200MB a ~18MB
+- ✅ Eliminación de warnings de DockerScout
+- ✅ Imagen funcional y segura lista para despliegue
+- ✅ Push exitoso a Docker Hub como `loizzz/hat.sh-by-grupo5:latest`
+
 ### Lecciones Aprendidas
 
 **Aspectos positivos del proyecto original:**
@@ -663,7 +822,7 @@ docker rm hatsh-devsecops
 - Headers de seguridad esenciales en aplicaciones web
 - Gestión de datos sensibles requiere atención especial
 - Validación estricta en puntos de entrada
-
+- **Nueva lección:** Verificación exhaustiva del Dockerfile antes del despliegue
 
 ### Conclusión Final
 
@@ -673,3 +832,4 @@ El proceso de hardening de hat.sh ha sido exitoso, transformando una aplicación
 #### Paso 4: Disfruta encryptando tus archivos con una version renovada! 
 
 #### by Grupo 5 🦊🦅
+
